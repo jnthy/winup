@@ -1,0 +1,94 @@
+name: updates
+on:
+  schedule:
+    - cron: "10 14 1-31/2 * *"
+  workflow_dispatch:
+    
+jobs:
+  updates:
+    name: updates
+    runs-on: ubuntu-latest
+    steps:
+      - name: updates
+        run: |
+          rm -rf *
+          mkdir -p Scripts
+          git clone https://github.com/adavak/Win_ISO_Patching_Scripts.git tmp
+          mv tmp/Scripts/*17763_x64* tmp/Scripts/netfx4.8/*17763_x64* Scripts/
+          mkdir -p bin
+          mv tmp/bin/*.dll tmp/bin/*.exe bin/
+          
+          wget https://raw.githubusercontent.com/abbodi1406/BatUtil/master/W10UI/W10UI.cmd
+          #wget https://raw.githubusercontent.com/abbodi1406/BatUtil/master/W10UI/W10UI.ini
+          
+          sed -i -e 's/set "Target="/set "Target=%cd%\\ISO"/g' -e 's/set "Repo="/set "Repo=%cd%\\patch"/g' -e 's/set "Net35Source="/set "Net35Source=%cd%\\ISO\\sources\\sxs"/g' -e 's/set Cleanup=0/set Cleanup=1/g' -e 's/set ResetBase=0/set ResetBase=1/g' -e 's/set LCUwinre=0/set LCUwinre=1/g' -e 's/set UpdtBootFiles=0/set UpdtBootFiles=1/g' -e 's/set SkipEdge=0/set SkipEdge=1/g' -e 's/set AutoStart=0/set AutoStart=1/g' W10UI.cmd 
+          #sed -i -e '/^Target.*=/s/=.*/=%cd%\\ISO/g' -e '/^Repo.*=/s/=.*/=cd%\\patch/g' -e '/^Net35Source.*=/s/=.*/=%cd%\\ISO\\sources\\sxs/g' -e '/^Cleanup.*=/s/=0/=1/g' -e '/^ResetBase.*=/s/=0/=1/g' -e '/^LCUwinre.*=/s/=0/=1/g' -e '/^UpdtBootFiles.*=/s/=0/=1/g' -e '/^SkipEdge.*=/s/=0/=1/g' -e '/^AutoStart.*=/s/=0/=1/g' W10UI.ini
+          
+          mkdir -p temp
+          cd temp 
+          wget -qO advak.ini https://raw.githubusercontent.com/adavak/Win_ISO_Patching_Scripts/master/W10UI.ini
+          wget -qO 1406.ini https://raw.githubusercontent.com/abbodi1406/BatUtil/master/W10UI/W10UI.ini
+          awk 'FNR==NR{a[$1];next}!($1 in a){print $1}' 1406.ini advak.ini > test.txt
+          grep -vwf test.txt advak.ini > ../W10UI.ini
+          cd -
+          sed -i -e '/^UpdtBootFiles.*=/s/=0/=1/g' -e '/^SkipEdge.*=/s/=0/=1/g' -e '/^wim2esd.*=/s/=1/=0/g' W10UI.ini
+          
+          rm -rf tmp temp
+          
+          mkdir -p .github/workflows
+          wget -qO .github/workflows/winup.yml https://github.com/${{ github.repository }}/raw/master/.github/workflows/winup.yml &> /dev/null
+          git config --global init.defaultBranch master
+          git init
+          git add .
+          git config user.name jnthy
+          git config user.email 145527789+jnthy@users.noreply.github.com
+          git commit -m "$(date "+%Y%m%d-%H%M")"
+          git remote add origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git push origin master --force
+          
+          
+          #aria2c --no-conf --check-certificate=false -x16 -s16 -j5 -c -R -d ./patch -M ./Scripts/*17763_x64* 
+          #aria2c --no-conf --check-certificate=false -x16 -s16 -j5 -c -R -d ./patch -M ./Scripts/*net*17763_x64* --metalink-language="neutral"
+          
+          #echo "@ECHO OFF&(CD /D \"%~DP0\")&(FLTMC>NUL)||(mshta vbscript:CreateObject^(\"Shell.Application\"^).ShellExecute^(\"%~snx0\",\" %*\",\"\",\"runas\",1^)^(window.close^)&&exit /b)" > ExtractingISO.cmd
+          #echo "set \"a7z=bin\\7z.exe\"" >> ExtractingISO.cmd
+          #echo "set \"ISODir=ISO\"" >> ExtractingISO.cmd
+          #echo "::dir /b /a:-d *.iso 1>nul 2>nul && (for /f \"delims=\" %% in ('dir /b /a:-d *.iso') do set \"isofile=%%\")" >> ExtractingISO.cmd
+          #echo "dir /b /a:-d %USERPROFILE%\desktop\*.iso 1>nul 2>nul && (for /f \"delims=\" %% in ('dir /b /a:-d %USERPROFILE%\desktop\*.iso') do set \"isofile=%%\")" >> ExtractingISO.cmd
+          #echo "%a7z% x \"%USERPROFILE%\\desktop\\%isofile%\" -o\"%~dp0%ISODir%\" -r" >> ExtractingISO.cmd
+          
+          # https://repl.it/github/cokox/rpl
+  push:
+    needs: updates
+    name: push
+    runs-on: ubuntu-latest
+    steps:
+      - name: push
+        run: |
+          CLONE_DIR=$(mktemp -d)
+          GIT_CMD_REPOSITORY="https://${{ secrets.USER_NAME }}:${{ secrets.USER_TOKEN }}@github.com/${{ secrets.USER_NAME }}/${{ secrets.USER_REPO }}.git"
+          git config --global user.name ${{ secrets.USER_NAME }}
+          git config --global user.email ${{ secrets.USER_EMAIL }}
+          git config --global http.version HTTP/1.1
+          git clone --single-branch --depth 1 --branch master "$GIT_CMD_REPOSITORY" "$CLONE_DIR"
+          ls -la "$CLONE_DIR"
+          TMP_DIR=$(mktemp -d)
+          mv "$CLONE_DIR/.git" "$TMP_DIR/.git"
+          
+          find "$CLONE_DIR" | grep -v "^$CLONE_DIR$" | xargs rm -rf 
+          ls -la "$CLONE_DIR"
+          mv "$TMP_DIR/.git" "$CLONE_DIR/.git"
+          
+          TEMP_DIR=$(mktemp -d)
+          git clone --single-branch --depth 1 --branch master "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$TEMP_DIR"
+          rm -rf "$TEMP_DIR/.git" "$TEMP_DIR/.github"
+          ls "$TEMP_DIR"
+          cp -ra "$TEMP_DIR"/* "$CLONE_DIR"
+          cd "$CLONE_DIR"
+          ls -la
+          
+          git config --global --add safe.directory "$CLONE_DIR"
+          git add .
+          git status
+          git diff-index --quiet HEAD || git commit --message "$(date "+%Y%m%d-%H%M")"
+          git push "$GIT_CMD_REPOSITORY"  --set-upstream master
